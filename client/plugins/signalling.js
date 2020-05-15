@@ -7,6 +7,7 @@ class Signalling {
     this._websocketUrl = websocketURL;
     this._websocket = null;
 
+    Signalling.instance = this
     return this
   }
 
