@@ -20,23 +20,34 @@ type Hub struct {
 }
 
 func NewHub() *Hub {
-	return &Hub{
+	hub := &Hub{
 		rooms:        make(map[string]*Room),
 		clients:      make(map[uint]*Client),
 		registerCh:   make(chan *Client),
 		unregisterCh: make(chan *Client),
 		broadcastCh:  make(chan *BroadcastMessage),
 	}
+
+	go hub.run()
+	return hub
+}
+
+func (h *Hub) AddClient(client *Client) {
+	h.registerCh <- client
+}
+
+func (h *Hub) RemoveClient(client *Client) {
+	h.unregisterCh <- client
 }
 
 func (h *Hub) run() {
-	conferencing := 1
-	log.Printf("%v", conferencing)
 	for {
 		select {
 		case client := <-h.registerCh:
+			log.Printf("Registering new client with user id: %d", client.user.ID)
 			h.clients[client.user.ID] = client
 		case client := <-h.unregisterCh:
+			log.Printf("Removing client with user id: %d", client.user.ID)
 			if _, ok := h.clients[client.user.ID]; ok {
 				delete(h.clients, client.user.ID)
 				close(client.sendCh)

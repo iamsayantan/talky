@@ -2,16 +2,14 @@ package server
 
 import (
 	"encoding/json"
-	"github.com/gorilla/websocket"
-	"github.com/iamsayantan/talky"
-	"log"
-	"net/http"
-	"time"
-
 	"github.com/go-chi/chi"
 	chiware "github.com/go-chi/chi/middleware"
 	"github.com/go-chi/cors"
+	"github.com/gorilla/websocket"
+	"github.com/iamsayantan/talky"
 	"github.com/iamsayantan/talky/store"
+	"log"
+	"net/http"
 )
 
 var upgrader = websocket.Upgrader{
@@ -30,6 +28,7 @@ type WebHandler interface {
 type Server struct {
 	UserRepo store.UserRepository
 
+	hub    *talky.Hub
 	router chi.Router
 }
 
@@ -48,7 +47,7 @@ func (s *Server) ServeWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Got Websocket Connection Request from User: %v", authUser)
+	log.Printf("Got Websocket Connection Request from User: %d", authUser.ID)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("err: %v", err)
@@ -59,21 +58,8 @@ func (s *Server) ServeWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ticker := time.NewTicker(6 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			msg := struct {
-				Ping string `json:"ping"`
-			}{Ping: "ping"}
-
-			if err := conn.WriteJSON(msg); err != nil {
-				log.Printf("Error: %v", err)
-				return
-			}
-		}
-	}
-
+	client := talky.NewClient(s.hub, authUser, conn)
+	s.hub.AddClient(client)
 }
 
 func NewServer(userRepo store.UserRepository) *Server {
@@ -101,7 +87,10 @@ func NewServer(userRepo store.UserRepository) *Server {
 		r.Get("/ws", s.ServeWs)
 	})
 
+	hub := talky.NewHub()
+
 	s.router = r
+	s.hub = hub
 	return s
 }
 

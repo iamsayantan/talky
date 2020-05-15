@@ -75,6 +75,11 @@ export default {
       const _this = this
       const socket = new WebSocket(`${process.env.WS_URL}?auth_token=${_this.$auth.getToken('local')}`)
 
+      setInterval(() => {
+        console.log('Sending ping data to server')
+        socket.send(JSON.stringify({data: 'PING'}))
+      }, 6000)
+
       socket.onopen = function (ev) {
         console.log('Websocket connection established.')
       }
