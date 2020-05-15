@@ -38,9 +38,17 @@
         room_type: 'AUDIO'
       }
     },
+    mounted() {
+      this.$Signalling.open(this.$auth.getToken('local'))
+    },
     methods: {
       handleCreateRoom() {
+        const payload = {
+          room_id: 'la89df72ek2pklerqqbawre0cznWEOI',
+          room_type: 'audio_video'
+        };
 
+        this.$Signalling.send('create_or_join', payload)
       }
     }
   }

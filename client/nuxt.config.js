@@ -46,9 +46,13 @@ module.exports = {
   plugins: [
     {
       src: '~/plugins/webrtc-adapter',
-      src: '~/plugins/axios',
       mode: 'client'
-    }
+    },
+    {
+      src: '~/plugins/signalling',
+      mode: 'client'
+    },
+    {src: '~/plugins/axios'}
   ],
   /*
   ** Nuxt.js dev-modules
