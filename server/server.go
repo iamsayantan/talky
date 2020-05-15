@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"github.com/gorilla/websocket"
+	"github.com/iamsayantan/talky"
 	"log"
 	"net/http"
 	"time"
@@ -23,6 +24,7 @@ var upgrader = websocket.Upgrader{
 
 type WebHandler interface {
 	Route() chi.Router
+	Authenticate(handler http.Handler) http.Handler
 }
 
 type Server struct {
@@ -36,7 +38,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ServeWs(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Got Websocket Connection Request")
+	authUser, ok := r.Context().Value(KeyAuthUser).(*talky.User)
+	if !ok {
+		errResp := struct {
+			Error string `json:"error"`
+		}{Error: "Invalid access token"}
+
+		sendResponse(w, http.StatusBadRequest, errResp)
+		return
+	}
+
+	log.Printf("Got Websocket Connection Request from User: %v", authUser)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("err: %v", err)
@@ -79,12 +91,15 @@ func NewServer(userRepo store.UserRepository) *Server {
 	r.Use(chiware.AllowContentType("application/json"))
 	r.Use(corsHandler.Handler)
 
+	h := NewUserHandler(s.UserRepo)
 	r.Route("/user", func(r chi.Router) {
-		h := NewUserHandler(s.UserRepo)
 		r.Mount("/v1", h.Route())
 	})
 
-	r.Get("/ws", s.ServeWs)
+	r.Group(func(r chi.Router) {
+		r.Use(h.Authenticate)
+		r.Get("/ws", s.ServeWs)
+	})
 
 	s.router = r
 	return s

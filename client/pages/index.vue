@@ -73,7 +73,7 @@ export default {
   methods: {
     async ws() {
       const _this = this
-      const socket = new WebSocket(process.env.WS_URL)
+      const socket = new WebSocket(`${process.env.WS_URL}?auth_token=${_this.$auth.getToken('local')}`)
 
       socket.onopen = function (ev) {
         console.log('Websocket connection established.')

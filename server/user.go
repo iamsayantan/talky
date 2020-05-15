@@ -22,6 +22,9 @@ const (
 
 	// AuthorizationHeader is the key from where we extract the authentication token.
 	AuthorizationHeader = "Authorization"
+
+	// AuthorizationQueryParam is the key from where we extract the auth token when supplied as query string parameter.
+	AuthorizationQueryParam = "auth_token"
 )
 
 // JwtSigningSecret used for signing and verifying jwt tokens.
@@ -258,15 +261,26 @@ func (uh *userHandler) verifyAuthToken(token string) (*talky.User, error) {
 	return user, nil
 }
 
+// Authenticate public interface for the authenticate middleware.
+func (uh *userHandler) Authenticate(next http.Handler) http.Handler {
+	return uh.authenticate(next)
+}
+
 func (uh *userHandler) authenticate(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get(AuthorizationHeader)
 		ctx := r.Context()
 
 		if token == "" {
+			// If the auth token is not present in the authorization header we will attempt to fetch it from the
+			// query parameter.
+			token = r.URL.Query().Get(AuthorizationQueryParam)
+		}
+
+		if token == "" {
 			errResp := struct {
 				Error string `json:"error"`
-			}{Error: "Unauthorized Access"}
+			}{Error: "unauthorized access"}
 
 			sendResponse(w, http.StatusUnauthorized, errResp)
 			return
