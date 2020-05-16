@@ -48,7 +48,7 @@
           room_type: 'audio_video'
         };
 
-        this.$Signalling.send('create_or_join', payload)
+        this.$Signalling.send('CREATE_OR_JOIN', payload)
       }
     }
   }

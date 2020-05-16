@@ -1,14 +1,9 @@
 package talky
 
-import "log"
-
-// BroadcastMessage defines the structure of the broadcasts sent by client websocket connection.
-type BroadcastMessage struct {
-	RoomID string `json:"room_id"`
-	UserID uint   `json:"user_id"`
-
-	Payload interface{} `json:"payload"`
-}
+import (
+	"encoding/json"
+	"log"
+)
 
 type Hub struct {
 	rooms   map[string]*Room
@@ -16,7 +11,7 @@ type Hub struct {
 
 	registerCh   chan *Client
 	unregisterCh chan *Client
-	broadcastCh  chan *BroadcastMessage
+	broadcastCh  chan []byte
 }
 
 func NewHub() *Hub {
@@ -25,7 +20,7 @@ func NewHub() *Hub {
 		clients:      make(map[uint]*Client),
 		registerCh:   make(chan *Client),
 		unregisterCh: make(chan *Client),
-		broadcastCh:  make(chan *BroadcastMessage),
+		broadcastCh:  make(chan []byte),
 	}
 
 	go hub.run()
@@ -51,6 +46,22 @@ func (h *Hub) run() {
 			if _, ok := h.clients[client.user.ID]; ok {
 				delete(h.clients, client.user.ID)
 				close(client.sendCh)
+			}
+		case message := <-h.broadcastCh:
+			log.Printf("Iside hub broadcast")
+			var msg *Message
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("Error unmarshalling websocket message: %v", err)
+			}
+
+			switch msg.Type {
+			case CreateOrJoinRoom:
+				var payload CreateOrJoinRoomMessage
+				if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+					log.Printf("Error unmarshalling websocket payload: %v", err)
+				}
+
+				log.Printf("[Websocket] Message Type: %s, Message Payload: %v", msg.Type, payload.RoomType)
 			}
 		}
 	}

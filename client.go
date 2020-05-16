@@ -84,7 +84,9 @@ func (c *Client) readPump() {
 		}
 
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		log.Printf("Received message: %s", string(message))
+		log.Printf("before sending to hub")
+		c.hub.broadcastCh <- message
+		log.Printf("after sending to hub")
 	}
 }
 
