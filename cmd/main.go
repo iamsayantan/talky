@@ -15,16 +15,18 @@ import (
 )
 
 var (
-	defaultDBHost     = getFromEnv("MYSQL_HOST", "localhost")
-	defaultDBPort     = getFromEnv("MYSQL_PORT", "3306")
-	defaultDBUsername = getFromEnv("MYSQL_USERNAME", "root")
-	defaultDBPassword = getFromEnv("MYSQL_PASSWORD", "12345")
+	defaultDBType     = getFromEnv("DB_TYPE", "mysql")
+	defaultDBHost     = getFromEnv("DB_HOST", "localhost")
+	defaultDBPort     = getFromEnv("DB_PORT", "3306")
+	defaultDBUsername = getFromEnv("DBL_USERNAME", "root")
+	defaultDBPassword = getFromEnv("DB_PASSWORD", "12345")
 	defaultDBName     = getFromEnv("DATABASE_NAME", "talky")
 
 	defaultServerPort = "9050"
 )
 
 func main() {
+	dbType := flag.String("db.type", defaultDBType, "Database Type")
 	dbHost := flag.String("db.host", defaultDBHost, "Database host url")
 	dbPort := flag.String("db.port", defaultDBPort, "Database port")
 	dbUsername := flag.String("db.username", defaultDBUsername, "Database username")
@@ -38,7 +40,7 @@ func main() {
 	dbCred := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", *dbUsername, *dbPassword, *dbHost, *dbPort, defaultDBName)
 	log.Printf("Database Credential: %s", dbCred)
 
-	db, err := gorm.Open("mysql", dbCred)
+	db, err := gorm.Open(*dbType, dbCred)
 	if err != nil {
 		panic(err)
 	}
