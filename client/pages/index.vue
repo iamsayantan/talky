@@ -5,11 +5,11 @@
     <v-row no-gutters>
       <div>
         <span class="display-3" style="color: #069587">Create Your Room</span>
-      </div>
-      <div style="margin-top: 20px">
-        <span class="subtitle-1">Invite you friends to your room to have a realtime audio video conferencing.</span>
-        <br>
-        <span class="subtitle-1">Audio only rooms can have upto 20 members while audio video rooms can have maximum 4 members.</span>
+        <div style="margin-top: 20px">
+          <span class="subtitle-1">Invite you friends to your room to have a realtime audio video conferencing.</span>
+          <br>
+          <span class="subtitle-1">Audio only rooms can have upto 20 members while audio video rooms can have maximum 4 members.</span>
+        </div>
       </div>
       <v-layout
         column
@@ -31,6 +31,8 @@
 </template>
 
 <script>
+  import { v4 } from 'uuid'
+
   export default {
     name: "index",
     data() {
@@ -38,17 +40,13 @@
         room_type: 'AUDIO'
       }
     },
-    mounted() {
-      this.$Signalling.open(this.$auth.getToken('local'))
-    },
     methods: {
       handleCreateRoom() {
-        const payload = {
-          room_id: 'la89df72ek2pklerqqbawre0cznWEOI',
-          room_type: 'audio_video'
-        };
+        let roomId = v4();
+        roomId = roomId.split('-').join('');
 
-        this.$Signalling.send('CREATE_OR_JOIN', payload)
+        const path = `${this.room_type === 'AUDIO' ?  'a' : 'av' }/${roomId}`;
+        this.$router.push(path)
       }
     }
   }

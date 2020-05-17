@@ -9,11 +9,11 @@ var (
 	ErrRoomCapacityFull = errors.New("room capacity is full")
 )
 
-type RoomType int
+type RoomType string
 
 const (
-	AudioRoom RoomType = iota
-	AudioVideoRoom
+	AudioRoom      RoomType = "AUDIO"
+	AudioVideoRoom RoomType = "AUDIO_VIDEO"
 )
 
 const (
@@ -30,6 +30,15 @@ type Room struct {
 	Members  map[uint]*User `json:"members"`   // Members All the users who joined the room.
 
 	mu sync.Mutex
+}
+
+// NewRoom
+func NewRoom(roomType RoomType, roomId string) *Room {
+	return &Room{
+		ID:       roomId,
+		RoomType: roomType,
+		Members:  make(map[uint]*User),
+	}
 }
 
 // AddMember Adds a new user to a room. Rooms have different capacity for members based on the room type.

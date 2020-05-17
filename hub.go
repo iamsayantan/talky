@@ -11,7 +11,7 @@ type Hub struct {
 
 	registerCh   chan *Client
 	unregisterCh chan *Client
-	broadcastCh  chan []byte
+	broadcastCh  chan *BroadcastMessage
 }
 
 func NewHub() *Hub {
@@ -20,7 +20,7 @@ func NewHub() *Hub {
 		clients:      make(map[uint]*Client),
 		registerCh:   make(chan *Client),
 		unregisterCh: make(chan *Client),
-		broadcastCh:  make(chan []byte),
+		broadcastCh:  make(chan *BroadcastMessage),
 	}
 
 	go hub.run()
@@ -35,6 +35,21 @@ func (h *Hub) RemoveClient(client *Client) {
 	h.unregisterCh <- client
 }
 
+// CreateOrJoinRoom either creates a room if it does not exist in the hub and then adds the
+// user to the room. If room already exists, then it just adds the user to the room.
+func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) {
+	room, ok := h.rooms[payload.RoomID]
+	if !ok {
+		room = NewRoom(payload.RoomType, payload.RoomID)
+	}
+
+	err := room.AddMember(user)
+	if err != nil {
+		log.Printf("Error while adding user to room: %v", err)
+	}
+	log.Printf("Added User %s to room id %s", user.Username, room.ID)
+}
+
 func (h *Hub) run() {
 	for {
 		select {
@@ -47,10 +62,9 @@ func (h *Hub) run() {
 				delete(h.clients, client.user.ID)
 				close(client.sendCh)
 			}
-		case message := <-h.broadcastCh:
-			log.Printf("Iside hub broadcast")
+		case broadcastMessage := <-h.broadcastCh:
 			var msg *Message
-			if err := json.Unmarshal(message, &msg); err != nil {
+			if err := json.Unmarshal(broadcastMessage.Payload, &msg); err != nil {
 				log.Printf("Error unmarshalling websocket message: %v", err)
 			}
 
@@ -61,7 +75,7 @@ func (h *Hub) run() {
 					log.Printf("Error unmarshalling websocket payload: %v", err)
 				}
 
-				log.Printf("[Websocket] Message Type: %s, Message Payload: %v", msg.Type, payload.RoomType)
+				h.CreateOrJoinRoom(payload, broadcastMessage.User)
 			}
 		}
 	}

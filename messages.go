@@ -6,6 +6,12 @@ const (
 	CreateOrJoinRoom = "CREATE_OR_JOIN"
 )
 
+// BroadcastMessage defines the type for broadcast message.
+type BroadcastMessage struct {
+	User    *User  // User from whom we got the message
+	Payload []byte // Payload the message
+}
+
 // Message type represents the basic message type received from client.
 // Depending on the type, the payload structure can be different.
 type Message struct {
@@ -14,6 +20,6 @@ type Message struct {
 }
 
 type CreateOrJoinRoomMessage struct {
-	RoomID   string `json:"room_id"`
-	RoomType string `json:"room_type"`
+	RoomID   string   `json:"room_id"`
+	RoomType RoomType `json:"room_type"`
 }

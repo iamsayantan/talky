@@ -33,6 +33,13 @@
     name: "login",
     auth: false,
     layout: 'auth',
+
+    asyncData({ app, redirect }) {
+      if (app.$auth.loggedIn) {
+        redirect('/');
+      }
+    },
+
     data() {
       return {
         loading: false,
@@ -42,6 +49,7 @@
         }
       }
     },
+
     methods: {
       async handleLogin() {
         this.loading = true;
