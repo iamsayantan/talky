@@ -1,1 +1,1 @@
-web: bin/talky -db.type=postgres -db.host=ec2-18-210-214-86.compute-1.amazonaws.com -db.port=5432 -db.username=upprwcwworpxgr -db.password=6143ab90dc46a3c50b5a9a0df20989da8c55f1dc59ee6e596e2f48357df2133f db.name=d5g2cm5j5u89bm
+web: bin/talky -db.type=postgres -db.host=ec2-18-233-32-61.compute-1.amazonaws.com -db.port=5432 -db.username=fypcdjqowjtizm -db.password=06539ae77c36e485a0c3074612a8e0bcf4aecbaf5109e51c3de508daf1614c84 db.name=d2qiqpeiadb947
