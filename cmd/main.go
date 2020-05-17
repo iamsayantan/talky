@@ -12,6 +12,7 @@ import (
 	"github.com/iamsayantan/talky/store/mysql"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
 )
 
 var (
@@ -29,6 +30,7 @@ func main() {
 	dbType := flag.String("db.type", defaultDBType, "Database Type")
 	dbHost := flag.String("db.host", defaultDBHost, "Database host url")
 	dbPort := flag.String("db.port", defaultDBPort, "Database port")
+	dbName := flag.String("db.name", defaultDBName, "Database name")
 	dbUsername := flag.String("db.username", defaultDBUsername, "Database username")
 	dbPassword := flag.String("db.password", defaultDBPassword, "Database password")
 	serverPort := flag.String("server.port", defaultServerPort, "Server port where the server runs")
