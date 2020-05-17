@@ -42,7 +42,17 @@ func main() {
 	dbCred := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", *dbUsername, *dbPassword, *dbHost, *dbPort, *dbName)
 	log.Printf("Database Credential: %s", dbCred)
 
-	db, err := gorm.Open(*dbType, dbCred)
+	var (
+		db  *gorm.DB
+		err error
+	)
+
+	if *dbType == "postgres" {
+		db, err = gorm.Open("postgres", fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s", *dbHost, *dbPort, *dbUsername, *dbName, *dbPassword))
+	} else {
+		db, err = gorm.Open(*dbType, dbCred)
+	}
+
 	if err != nil {
 		panic(err)
 	}
