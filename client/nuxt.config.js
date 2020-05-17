@@ -23,7 +23,7 @@ module.exports = {
     ],
   },
   server: {
-    port: 8050,
+    port: process.env.PORT,
     host: '0.0.0.0'
   },
 
