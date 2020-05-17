@@ -5,7 +5,7 @@
       fixed
       app
     >
-      <v-toolbar-title><v-icon color="teal" large>mdi-chat-plus</v-icon> <span style="color: #069587; font-weight: bold">Talky</span></v-toolbar-title>
+      <v-toolbar-title><v-icon color="teal" large>mdi-chat-plus</v-icon> <span style="color: #069587; font-weight: bold">konference</span></v-toolbar-title>
       <v-spacer></v-spacer>
       <v-btn icon @click="handleLogout">
         <v-icon color="teal">mdi-power</v-icon>

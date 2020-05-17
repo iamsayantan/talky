@@ -9,7 +9,7 @@
             align-center
           >
             <v-icon large dark class="display-4">mdi-chat-plus</v-icon>
-            <span class="display-3 font-weight-medium" style="color: white">Talky</span>
+            <span class="display-3 font-weight-medium" style="color: white">konference</span>
           </v-layout>
         </div>
         <div style="flex: 5">

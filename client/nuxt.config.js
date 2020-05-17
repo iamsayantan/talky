@@ -7,7 +7,7 @@ module.exports = {
   ** Headers of the page
   */
   head: {
-    titleTemplate: 'Talky - Realtime voice and video chat',
+    titleTemplate: 'konference - Realtime voice and video chat',
     title: process.env.npm_package_name || '',
     meta: [
       { charset: 'utf-8' },
