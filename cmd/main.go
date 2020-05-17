@@ -64,7 +64,7 @@ func main() {
 	srv := server.NewServer(userRepo)
 
 	log.Printf("Server starting on port %s", *serverPort)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", *serverPort), srv))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), srv))
 }
 
 func getFromEnv(key, defaultValue string) string {
