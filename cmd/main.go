@@ -39,7 +39,7 @@ func main() {
 
 	// connect to the database
 	// format: "user:password@tcp(127.0.0.1:3306)/dbname?charset=utf8&parseTime=True&loc=Local"
-	dbCred := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", *dbUsername, *dbPassword, *dbHost, *dbPort, defaultDBName)
+	dbCred := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", *dbUsername, *dbPassword, *dbHost, *dbPort, *dbName)
 	log.Printf("Database Credential: %s", dbCred)
 
 	db, err := gorm.Open(*dbType, dbCred)
