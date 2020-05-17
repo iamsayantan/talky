@@ -21,7 +21,7 @@
     "nuxt": "^2.0.0",
     "uuid": "^8.0.0",
     "webrtc-adapter": "^7.6.0",
-    "@nuxtjs/vuetify": "^1.11.2",
+    "@nuxtjs/vuetify": "^1.11.2"
   },
   "devDependencies": {
     "@nuxt/typescript-build": "^0.6.0",
