@@ -12,9 +12,10 @@
       </v-btn>
     </v-app-bar>
     <v-content>
-      <v-container :fluid="true">
-        <nuxt />
-      </v-container>
+      <nuxt />
+<!--      <v-container :fluid="true">-->
+<!--        <nuxt />-->
+<!--      </v-container>-->
     </v-content>
   </v-app>
 </template>
