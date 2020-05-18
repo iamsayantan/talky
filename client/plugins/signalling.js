@@ -50,7 +50,7 @@ class Signalling {
 }
 
 export default function ({ app }, inject) {
-  const websocketUrl = process.env.WS_URL || 'https://konference-api.herokuapp.com/ws';
+  const websocketUrl = process.env.WS_URL || 'wss://konference-api.herokuapp.com/ws';
   const signalling = new Signalling(websocketUrl);
   app.$Signalling = signalling;
   inject('Signalling', signalling)
