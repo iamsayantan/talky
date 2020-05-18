@@ -12,7 +12,7 @@ type BroadcastMessage struct {
 	Payload []byte // Payload the message
 }
 
-// Message type represents the basic message type received from client.
+// Message type represents the basic message type exchanged with clients.
 // Depending on the type, the payload structure can be different.
 type Message struct {
 	Type    string          `json:"type"`
@@ -22,4 +22,9 @@ type Message struct {
 type CreateOrJoinRoomMessage struct {
 	RoomID   string   `json:"room_id"`
 	RoomType RoomType `json:"room_type"`
+}
+
+type ResponseMessage struct {
+	Type    string      `json:"type"`
+	Payload interface{} `json:"payload"`
 }

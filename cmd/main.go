@@ -23,7 +23,7 @@ var (
 	defaultDBPassword = getFromEnv("DB_PASSWORD", "12345")
 	defaultDBName     = getFromEnv("DATABASE_NAME", "talky")
 
-	defaultServerPort = "9050"
+	defaultServerPort = getFromEnv("PORT", "9050")
 )
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
 	srv := server.NewServer(userRepo)
 
 	log.Printf("Server starting on port %s", *serverPort)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), srv))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", *serverPort), srv))
 }
 
 func getFromEnv(key, defaultValue string) string {

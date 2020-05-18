@@ -2,12 +2,14 @@ package talky
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 )
 
 type Hub struct {
-	rooms   map[string]*Room
-	clients map[uint]*Client
+	rooms       map[string]*Room
+	clients     map[uint]*Client
+	clientRooms map[uint]*Room // a single user can only be part of one room, so the hub keeps that mapping
 
 	registerCh   chan *Client
 	unregisterCh chan *Client
@@ -18,6 +20,7 @@ func NewHub() *Hub {
 	hub := &Hub{
 		rooms:        make(map[string]*Room),
 		clients:      make(map[uint]*Client),
+		clientRooms:  make(map[uint]*Room),
 		registerCh:   make(chan *Client),
 		unregisterCh: make(chan *Client),
 		broadcastCh:  make(chan *BroadcastMessage),
@@ -32,22 +35,50 @@ func (h *Hub) AddClient(client *Client) {
 }
 
 func (h *Hub) RemoveClient(client *Client) {
+	h.RoomCleanup(client)
 	h.unregisterCh <- client
+}
+
+// RoomCleanup removes the user from any room he is part of. Also removes the room
+// from the hub if it becomes empty.
+func (h *Hub) RoomCleanup(client *Client) {
+	room, ok := h.clientRooms[client.user.ID]
+	if !ok {
+		return
+	}
+
+	_ = room.RemoveMember(client.user)
+	delete(h.clientRooms, client.user.ID)
+
+	// remove empty rooms from the memory.
+	if len(room.Members) == 0 {
+		log.Printf("Room %s is empty, removing from the Hub", room.ID)
+		delete(h.rooms, room.ID)
+	}
 }
 
 // CreateOrJoinRoom either creates a room if it does not exist in the hub and then adds the
 // user to the room. If room already exists, then it just adds the user to the room.
-func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) {
+func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) error {
 	room, ok := h.rooms[payload.RoomID]
 	if !ok {
 		room = NewRoom(payload.RoomType, payload.RoomID)
+		h.rooms[room.ID] = room
+	}
+
+	// at a time a single user can be part of only one room.
+	if existingRoom, ok := h.clientRooms[user.ID]; ok && existingRoom.ID != room.ID {
+		return errors.New("you are already a part of a room")
 	}
 
 	err := room.AddMember(user)
 	if err != nil {
 		log.Printf("Error while adding user to room: %v", err)
+		return err
 	}
-	log.Printf("Added User %s to room id %s", user.Username, room.ID)
+
+	h.clientRooms[user.ID] = room
+	return nil
 }
 
 func (h *Hub) run() {
@@ -75,7 +106,16 @@ func (h *Hub) run() {
 					log.Printf("Error unmarshalling websocket payload: %v", err)
 				}
 
-				h.CreateOrJoinRoom(payload, broadcastMessage.User)
+				err := h.CreateOrJoinRoom(payload, broadcastMessage.User)
+				if err != nil {
+					errPayload := ResponseMessage{
+						Type:    "error",
+						Payload: err.Error(),
+					}
+
+					msg, _ := json.Marshal(errPayload)
+					h.clients[broadcastMessage.User.ID].sendCh <- msg
+				}
 			}
 		}
 	}

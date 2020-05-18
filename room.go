@@ -2,6 +2,7 @@ package talky
 
 import (
 	"errors"
+	"log"
 	"sync"
 )
 
@@ -63,12 +64,13 @@ func (r *Room) AddMember(user *User) error {
 	r.Members[user.ID] = user
 	r.mu.Unlock()
 
+	log.Printf("Added user %s to room %s. Current members: %d", user.Username, r.ID, len(r.Members))
 	return nil
 }
 
 // RemoveMember Removes the user from the rooms member list.
 func (r *Room) RemoveMember(user *User) error {
-	if _, ok := r.Members[user.ID]; ok {
+	if _, ok := r.Members[user.ID]; !ok {
 		// Ignoring if user who is being removed does not exist in the room.
 		return nil
 	}
@@ -77,5 +79,6 @@ func (r *Room) RemoveMember(user *User) error {
 	delete(r.Members, user.ID)
 	r.mu.Unlock()
 
+	log.Printf("Removed user %s from room %s. Current members: %d", user.Username, r.ID, len(r.Members))
 	return nil
 }
