@@ -50,7 +50,8 @@ class Signalling {
 }
 
 export default function ({ app }, inject) {
+  console.log('WS_URL', process.env.WS_URL);
   const signalling = new Signalling(process.env.WS_URL);
-  app.$Signalling = signalling
+  app.$Signalling = signalling;
   inject('Signalling', signalling)
 }
