@@ -6,6 +6,7 @@ class Signalling {
 
     this._websocketUrl = websocketURL;
     this._websocket = null;
+    this._onSignallingMessage = null;
 
     Signalling.instance = this
     return this
@@ -17,24 +18,30 @@ class Signalling {
       return;
     }
 
-    this._websocket = new WebSocket(`${this._websocketUrl}?auth_token=${authToken}`)
+    return new Promise((resolve, reject) => {
+      this._websocket = new WebSocket(`${this._websocketUrl}?auth_token=${authToken}`)
 
-    this._websocket.onopen = () => {
-      console.log('[Signalling] Websocket connection opened.')
-    };
+      this._websocket.onopen = () => {
+        resolve();
+        console.log('[Signalling] Websocket connection opened.')
+      };
 
-    this._websocket.onerror = (err) => {
-      console.log('[Signalling] Websocket error: ', err)
-    };
+      this._websocket.onerror = (err) => {
+        reject();
+        console.log('[Signalling] Websocket error: ', err)
+      };
 
-    this._websocket.onclose = (evt) => {
-      console.log('[Signalling] Websocket connection closed: ', evt);
-      this._websocket = null
-    }
+      this._websocket.onclose = (evt) => {
+        console.log('[Signalling] Websocket connection closed: ', evt);
+        this._websocket = null
+      }
 
-    this._websocket.onmessage = (evt) => {
-      console.log('[Signalling] Received websocket message: ', evt.data)
-    }
+      this._websocket.onmessage = (evt) => {
+        if (this._onSignallingMessage) {
+          this._onSignallingMessage(evt.data)
+        }
+      }
+    });
   }
 
   send(type, payload) {
@@ -46,6 +53,10 @@ class Signalling {
     if (this._websocket && this._websocket.readyState === WebSocket.OPEN) {
       this._websocket.send(JSON.stringify(wsMessage))
     }
+  }
+
+  registerOnSignallingMessageHandler(handler) {
+    this._onSignallingMessage = handler
   }
 }
 

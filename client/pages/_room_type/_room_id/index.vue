@@ -13,13 +13,10 @@
     </v-alert>
     <v-row
       v-else
-      row
       no-gutters
-      style="max-height: 100vh; min-height: 100%"
     >
-      <video class="local-video" autoplay playsinline muted ref="localVideo"></video>
-<!--      <v-col cols="6"><video autoplay playsinline muted ref="localVideo1"></video></v-col>-->
-<!--      <v-col cols="6"><video autoplay playsinline muted ref="localVideo2"></video></v-col>-->
+      <v-col cols="12"><video class="local-video" autoplay playsinline muted ref="localVideo"></video></v-col>
+      <v-col cols="12"><video class="local-video" autoplay ref="remoteVideo"></video></v-col>
 <!--      <v-col cols="6"><video autoplay playsinline muted ref="localVideo3"></video></v-col>-->
 <!--      <v-col cols="6"></v-col>-->
     </v-row>
@@ -45,8 +42,15 @@
           isError: false,
           errorMessage: 'Something is not right. Please try again with correct URL.'
         },
+        room_types: {
+          a: 'AUDIO',
+          av: 'AUDIO_VIDEO'
+        },
         webrtc: {
+          room_id: null,
+          room_type: null,
           localStream: null,
+          pc: null,
           mediaStreamConstraint: {
             audio: true,
             video: true
@@ -54,7 +58,7 @@
         }
       }
     },
-    mounted() {
+    async mounted() {
       const { room_type, room_id } = this.$route.params;
       if (!room_type || !room_id) {
         this.error.isError = true
@@ -71,11 +75,20 @@
         return;
       }
 
-      // everything looks okay, its time to initiate the websocket connection to the server.
-      this.$Signalling.open(this.$auth.getToken('local'));
-      this.createOrJoinRoom(room_type, room_id);
+      this.webrtc.room_type = this.room_types[room_type];
+      this.webrtc.room_id = room_id;
 
+      // everything looks okay, its time to initiate the websocket connection to the server.
+      await this.$Signalling.open(this.$auth.getToken('local'));
+      this.createOrJoinRoom(room_type, room_id);
+      this.$Signalling.registerOnSignallingMessageHandler(this.signallingHandler.bind(this));
+
+      console.log('Inside mounted block')
       this.initiateLocalVideo()
+    },
+
+    beforeDestroy() {
+
     },
 
     methods: {
@@ -85,21 +98,142 @@
           room_id: roomId
         };
 
-        // waiting 2 seconds to give enough time for the websocket connection to establish.
-        setTimeout(() => {
-          this.$Signalling.send('CREATE_OR_JOIN', payload)
-        }, 2000)
+        this.$Signalling.send('CREATE_OR_JOIN', payload)
+      },
+
+      signallingHandler(data) {
+        data = JSON.parse(data);
+        console.log('[signallingHandler]', data);
+        switch (data.type) {
+          case 'error':
+            this.error.isError = true;
+            this.error.errorMessage = data.payload;
+            return;
+          case 'OFFER':
+            this.handleRemoteOffer(data.payload);
+            break;
+          case 'ANSWER':
+            this.handleRemoteAnswer(data.payload);
+            break;
+          case 'ICE_CANDIDATE':
+            this.handleNewICECandidate(data.payload);
+            break;
+        }
+      },
+
+      createPeerConnection() {
+        if (this.webrtc.pc) {
+          return;
+        }
+
+        this.webrtc.pc = new RTCPeerConnection(null);
+        this.webrtc.pc.ontrack = event => {
+          console.log('ontrack', event.streams);
+          this.$refs.remoteVideo.srcObject = event.streams[0]
+          this.$refs.remoteVideo.srcObject.getTracks().forEach(track => {
+            console.log('Track Kind', track.kind)
+          })
+        };
+
+        this.webrtc.pc.onicecandidate = ({candidate}) => {
+          console.log('onicecandidate:', candidate);
+          if (candidate) {
+            const payload = {
+              room_id: this.webrtc.room_id,
+              user_id: this.$auth.user.id,
+              target_user_id: null,
+              candidate: candidate
+            };
+
+            this.$Signalling.send('ICE_CANDIDATE', payload)
+          }
+        };
+
+        this.webrtc.pc.onnegotiationneeded = async (evt) => {
+          console.log('onnegotiationneeded', evt);
+          try {
+            const offer = await this.webrtc.pc.createOffer();
+            await this.webrtc.pc.setLocalDescription(offer);
+            const payload = {
+              room_id: this.webrtc.room_id,
+              user_id: this.$auth.user.id,
+              target_user_id: null,
+              sdp: this.webrtc.pc.localDescription
+            };
+
+            this.$Signalling.send('OFFER', payload)
+          } catch (e) {
+            console.log(e)
+          }
+        };
+
+        this.webrtc.pc.onremovetrack = (evt) => {
+          console.log('onremovetrack', evt);
+        };
+
+        this.webrtc.pc.oniceconnectionstatechange = (evt) => {
+          console.log('oniceconnectionstatechange', evt)
+        };
+
+        this.webrtc.pc.onicegatheringstatechange = (evt) => {
+          console.log('onicegatheringstatechange', evt)
+        }
+
+        this.webrtc.pc.onsignalingstatechange = (evt) => {
+          console.log('onsignalingstatechange', evt)
+        }
+      },
+
+      async handleRemoteOffer(offerPayload) {
+        try {
+          const sessionDesc = new RTCSessionDescription(offerPayload.sdp);
+          await this.webrtc.pc.setRemoteDescription(sessionDesc);
+          const answer = await this.webrtc.pc.createAnswer();
+          await this.webrtc.pc.setLocalDescription(answer);
+
+          const payload = {
+            room_id: this.webrtc.room_id,
+            user_id: this.$auth.user.id,
+            target_user_id: offerPayload.user_id,
+            sdp: this.webrtc.pc.localDescription
+          };
+
+          this.$Signalling.send('ANSWER', payload);
+        } catch (e) {
+          console.error('handleRemoteOffer')
+        }
+      },
+
+      async handleRemoteAnswer(answerPayload) {
+        const sessionDesc = new RTCSessionDescription(answerPayload.sdp);
+        await this.webrtc.pc.setRemoteDescription(sessionDesc)
+      },
+
+      async handleNewICECandidate(candidatePayload) {
+        console.log('ReceivedCandidate', candidatePayload)
+        const candidate = new RTCIceCandidate(candidatePayload.candidate)
+        try {
+          await this.webrtc.pc.addIceCandidate(candidate);
+        } catch (e) {
+          console.error('icecandidate error', {e, candidate})
+        }
       },
 
       async initiateLocalVideo() {
+        // peer connection already established.
+        if (this.webrtc.pc) {
+          return;
+        }
+
+        this.createPeerConnection();
+
         try {
           const localStream = await navigator.mediaDevices.getUserMedia(this.webrtc.mediaStreamConstraint);
-          this.webrtc.localStream = localStream;
+          console.log(this.$refs.localVideo)
           this.$refs.localVideo.srcObject = localStream;
-          // this.$refs.localVideo1.srcObject = localStream;
-          // this.$refs.localVideo2.srcObject = localStream;
-          // this.$refs.localVideo3.srcObject = localStream;
+          localStream.getTracks().forEach(track => this.webrtc.pc.addTrack(track, localStream))
         } catch (e) {
+          console.log('Error in something')
           this.error.isError = true;
           this.error.errorMessage = e.message
         }
@@ -113,6 +247,6 @@
     height: 100%;
     min-height: 100%;
     max-width: 100%;
-    object-fit: cover;
+    /*object-fit: cover;*/
   }
 </style>

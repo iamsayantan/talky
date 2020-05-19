@@ -81,6 +81,83 @@ func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) erro
 	return nil
 }
 
+func (h *Hub) PropagateSDPOffer(payload SDPMessage) error {
+	room, ok := h.rooms[payload.RoomID]
+	if !ok {
+		return errors.New("room not found")
+	}
+
+	responsePayload := ResponseMessage{
+		Type:    Offer,
+		Payload: payload,
+	}
+
+	resp, _ := json.Marshal(responsePayload)
+
+	for _, member := range room.Members {
+		if client, ok := h.clients[member.ID]; ok {
+			// we exclude the the user who sent the offer.
+			if client.user.ID == payload.UserID {
+				continue
+			}
+
+			client.sendCh <- resp
+		}
+	}
+
+	return nil
+}
+
+func (h *Hub) SendAnswer(payload SDPMessage) error {
+	room, ok := h.rooms[payload.RoomID]
+	if !ok {
+		return errors.New("room not found")
+	}
+
+	responsePayload := ResponseMessage{
+		Type:    Answer,
+		Payload: payload,
+	}
+
+	resp, _ := json.Marshal(responsePayload)
+	for _, member := range room.Members {
+		if client, ok := h.clients[member.ID]; ok {
+			// answers should only be sent to the targeted user.
+			if payload.TargetUserID == 0 || client.user.ID != payload.TargetUserID {
+				continue
+			}
+
+			client.sendCh <- resp
+		}
+	}
+
+	return nil
+}
+
+func (h *Hub) SendICE(payload ICEMessage) error {
+	room, ok := h.rooms[payload.RoomID]
+	if !ok {
+		return errors.New("room not found")
+	}
+
+	responsePayload := ResponseMessage{
+		Type:    ICECandidate,
+		Payload: payload,
+	}
+	resp, _ := json.Marshal(responsePayload)
+	for _, member := range room.Members {
+		if client, ok := h.clients[member.ID]; ok {
+			if client.user.ID == payload.UserID {
+				continue
+			}
+
+			client.sendCh <- resp
+		}
+	}
+
+	return nil
+}
+
 func (h *Hub) run() {
 	for {
 		select {
@@ -107,6 +184,38 @@ func (h *Hub) run() {
 				}
 
 				err := h.CreateOrJoinRoom(payload, broadcastMessage.User)
+				if err != nil {
+					errPayload := ResponseMessage{
+						Type:    "error",
+						Payload: err.Error(),
+					}
+
+					msg, _ := json.Marshal(errPayload)
+					h.clients[broadcastMessage.User.ID].sendCh <- msg
+				}
+			case Offer:
+				var payload SDPMessage
+				if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+					log.Printf("Error unmarshalling websocket paylaod: %v", err)
+				}
+
+				err := h.PropagateSDPOffer(payload)
+				if err != nil {
+					errPayload := ResponseMessage{
+						Type:    "error",
+						Payload: err.Error(),
+					}
+
+					msg, _ := json.Marshal(errPayload)
+					h.clients[broadcastMessage.User.ID].sendCh <- msg
+				}
+			case ICECandidate:
+				var payload ICEMessage
+				if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+					log.Printf("Error unmarshalling websocket paylaod: %v", err)
+				}
+
+				err := h.SendICE(payload)
 				if err != nil {
 					errPayload := ResponseMessage{
 						Type:    "error",
