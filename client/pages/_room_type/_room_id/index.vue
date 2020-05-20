@@ -15,10 +15,14 @@
       v-else
       no-gutters
     >
-      <v-col cols="12"><video class="local-video" autoplay playsinline muted ref="localVideo"></video></v-col>
-      <v-col cols="12"><video class="local-video" autoplay ref="remoteVideo"></video></v-col>
-<!--      <v-col cols="6"><video autoplay playsinline muted ref="localVideo3"></video></v-col>-->
-<!--      <v-col cols="6"></v-col>-->
+      <v-col cols="6">
+        Local Video
+        <video class="local-video" autoplay playsinline muted ref="localVideo"></video>
+      </v-col>
+      <v-col cols="6">
+        Remote Video
+        <video id="remote-video" class="local-video" autoplay playsinline muted ref="remoteVideo"></video>
+      </v-col>
     </v-row>
     <v-btn
       absolute
@@ -103,7 +107,6 @@
 
       signallingHandler(data) {
         data = JSON.parse(data);
-        console.log('[signallingHandler]', data);
         switch (data.type) {
           case 'error':
             this.error.isError = true;
@@ -127,12 +130,10 @@
         }
 
         this.webrtc.pc = new RTCPeerConnection(null);
+
         this.webrtc.pc.ontrack = event => {
           console.log('ontrack', event.streams);
           this.$refs.remoteVideo.srcObject = event.streams[0]
-          this.$refs.remoteVideo.srcObject.getTracks().forEach(track => {
-            console.log('Track Kind', track.kind)
-          })
         };
 
         this.webrtc.pc.onicecandidate = ({candidate}) => {
@@ -229,7 +230,6 @@
 
         try {
           const localStream = await navigator.mediaDevices.getUserMedia(this.webrtc.mediaStreamConstraint);
-          console.log(this.$refs.localVideo)
           this.$refs.localVideo.srcObject = localStream;
           localStream.getTracks().forEach(track => this.webrtc.pc.addTrack(track, localStream))
         } catch (e) {

@@ -124,9 +124,11 @@ func (h *Hub) SendAnswer(payload SDPMessage) error {
 		if client, ok := h.clients[member.ID]; ok {
 			// answers should only be sent to the targeted user.
 			if payload.TargetUserID == 0 || client.user.ID != payload.TargetUserID {
+				log.Printf("Skipping sending answer to %d", client.user.ID)
 				continue
 			}
 
+			log.Printf("Sending answer to %d", client.user.ID)
 			client.sendCh <- resp
 		}
 	}
@@ -200,6 +202,22 @@ func (h *Hub) run() {
 				}
 
 				err := h.PropagateSDPOffer(payload)
+				if err != nil {
+					errPayload := ResponseMessage{
+						Type:    "error",
+						Payload: err.Error(),
+					}
+
+					msg, _ := json.Marshal(errPayload)
+					h.clients[broadcastMessage.User.ID].sendCh <- msg
+				}
+			case Answer:
+				var payload SDPMessage
+				if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+					log.Printf("Error unmarshalling websocket paylaod: %v", err)
+				}
+
+				err := h.SendAnswer(payload)
 				if err != nil {
 					errPayload := ResponseMessage{
 						Type:    "error",
