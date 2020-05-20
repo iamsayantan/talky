@@ -129,7 +129,13 @@
           return;
         }
 
-        this.webrtc.pc = new RTCPeerConnection(null);
+        this.webrtc.pc = new RTCPeerConnection({
+          iceServers: [
+            {
+              urls: 'stun:stun.l.google.com:19302'
+            }
+          ]
+        });
 
         this.webrtc.pc.ontrack = event => {
           console.log('ontrack', event.streams);
