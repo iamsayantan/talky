@@ -21,7 +21,7 @@
       </v-col>
       <v-col cols="6">
         Remote Video
-        <video id="remote-video" class="local-video" autoplay playsinline muted ref="remoteVideo"></video>
+        <video id="remote-video" class="local-video" autoplay playsinline ref="remoteVideo"></video>
       </v-col>
     </v-row>
     <v-btn
