@@ -7,6 +7,7 @@ import (
 )
 
 var (
+	ErrAlreadyInRoom    = errors.New("already a member of the room")
 	ErrRoomCapacityFull = errors.New("room capacity is full")
 )
 
@@ -56,8 +57,7 @@ func (r *Room) AddMember(user *User) error {
 	}
 
 	if _, ok := r.Members[user.ID]; ok {
-		// we are not throwing any error when a member already exists in the room.
-		return nil
+		return ErrAlreadyInRoom
 	}
 
 	r.mu.Lock()

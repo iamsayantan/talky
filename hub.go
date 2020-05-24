@@ -60,8 +60,12 @@ func (h *Hub) RoomCleanup(client *Client) {
 // CreateOrJoinRoom either creates a room if it does not exist in the hub and then adds the
 // user to the room. If room already exists, then it just adds the user to the room.
 func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) error {
+	// isInitiator is used to track if the room is initiated by the user, if a room is not available in the
+	// room list in hub, then we assume the first user a initiator.
+	isInitiator := false
 	room, ok := h.rooms[payload.RoomID]
 	if !ok {
+		isInitiator = true
 		room = NewRoom(payload.RoomType, payload.RoomID)
 		h.rooms[room.ID] = room
 	}
@@ -78,6 +82,27 @@ func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) erro
 	}
 
 	h.clientRooms[user.ID] = room
+
+	roomJoined := RoomJoined{
+		RoomID:      room.ID,
+		User:        *user,
+		IsInitiator: isInitiator,
+	}
+
+	responsePayload := ResponseMessage{
+		Type:    RoomJoin,
+		Payload: roomJoined,
+	}
+
+	resp, _ := json.Marshal(responsePayload)
+
+	// RoomJoin message should be broadcast to all users in the room.
+	for _, member := range room.Members {
+		if client, ok := h.clients[member.ID]; ok {
+			client.sendCh <- resp
+		}
+	}
+
 	return nil
 }
 

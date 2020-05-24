@@ -53,6 +53,7 @@
         webrtc: {
           room_id: null,
           room_type: null,
+          room_members: {},
           localStream: null,
           pc: null,
           mediaStreamConstraint: {
@@ -86,9 +87,6 @@
       await this.$Signalling.open(this.$auth.getToken('local'));
       this.createOrJoinRoom(room_type, room_id);
       this.$Signalling.registerOnSignallingMessageHandler(this.signallingHandler.bind(this));
-
-      console.log('Inside mounted block')
-      this.initiateLocalVideo()
     },
 
     beforeDestroy() {
@@ -120,6 +118,9 @@
             break;
           case 'ICE_CANDIDATE':
             this.handleNewICECandidate(data.payload);
+            break;
+          case 'ROOM_JOIN':
+            this.handleRoomJoin(data.payload);
             break;
         }
       },
@@ -188,6 +189,26 @@
 
         this.webrtc.pc.onsignalingstatechange = (evt) => {
           console.log('onsignalingstatechange', evt)
+        }
+      },
+
+      async handleRoomJoin({ room_id, user }) {
+        if (room_id !== this.webrtc.room_id) {
+          console.log(`Mismatching room ID. Current ${this.room_id} Incoming: ${room_id}`);
+          return;
+        }
+
+        if (this.webrtc.room_members[user.id]) {
+          console.log('Member already inside room.', this.webrtc.room_members);
+          return;
+        }
+
+        this.webrtc.room_members[user.id] = user;
+        const messageString = `${user.id === this.$auth.user.id ? 'You' : user.username} joined the room`;
+        this.$toast.success(messageString);
+
+        if (user.id === this.$auth.user.id) {
+          this.initiateLocalVideo();
         }
       },
 

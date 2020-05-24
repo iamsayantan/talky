@@ -7,6 +7,7 @@ const (
 	Offer            = "OFFER"
 	Answer           = "ANSWER"
 	ICECandidate     = "ICE_CANDIDATE"
+	RoomJoin         = "ROOM_JOIN"
 )
 
 // BroadcastMessage defines the type for broadcast message.
@@ -48,4 +49,10 @@ type ICEMessage struct {
 type ResponseMessage struct {
 	Type    string      `json:"type"`
 	Payload interface{} `json:"payload"`
+}
+
+type RoomJoined struct {
+	RoomID      string `json:"room_id"`
+	User        User   `json:"user"`
+	IsInitiator bool   `json:"is_initiator"`
 }
