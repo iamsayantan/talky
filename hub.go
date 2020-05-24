@@ -106,6 +106,37 @@ func (h *Hub) CreateOrJoinRoom(payload CreateOrJoinRoomMessage, user *User) erro
 	return nil
 }
 
+func (h *Hub) HandleHangup(payload HangupCall, user *User) error {
+	room, ok := h.clientRooms[payload.UserID]
+	if !ok {
+		return nil
+	}
+
+	err := room.RemoveMember(user)
+	if err != nil {
+		log.Printf("Error while removing user from room: %v", err)
+		return err
+	}
+	delete(h.clientRooms, user.ID)
+
+	responsePayload := ResponseMessage{
+		Type:    Hangup,
+		Payload: payload,
+	}
+
+	resp, _ := json.Marshal(responsePayload)
+	for _, member := range room.Members {
+		if client, ok := h.clients[member.ID]; ok {
+			if client.user.ID == user.ID {
+				continue
+			}
+			client.sendCh <- resp
+		}
+	}
+
+	return nil
+}
+
 func (h *Hub) PropagateSDPOffer(payload SDPMessage) error {
 	room, ok := h.rooms[payload.RoomID]
 	if !ok {
@@ -211,6 +242,22 @@ func (h *Hub) run() {
 				}
 
 				err := h.CreateOrJoinRoom(payload, broadcastMessage.User)
+				if err != nil {
+					errPayload := ResponseMessage{
+						Type:    "error",
+						Payload: err.Error(),
+					}
+
+					msg, _ := json.Marshal(errPayload)
+					h.clients[broadcastMessage.User.ID].sendCh <- msg
+				}
+			case Hangup:
+				var payload HangupCall
+				if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+					log.Printf("Error unmarshalling websocket paylaod: %v", err)
+				}
+
+				err := h.HandleHangup(payload, broadcastMessage.User)
 				if err != nil {
 					errPayload := ResponseMessage{
 						Type:    "error",

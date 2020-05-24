@@ -8,6 +8,7 @@ const (
 	Answer           = "ANSWER"
 	ICECandidate     = "ICE_CANDIDATE"
 	RoomJoin         = "ROOM_JOIN"
+	Hangup           = "HANGUP"
 )
 
 // BroadcastMessage defines the type for broadcast message.
@@ -27,6 +28,12 @@ type Message struct {
 type CreateOrJoinRoomMessage struct {
 	RoomID   string   `json:"room_id"`
 	RoomType RoomType `json:"room_type"`
+}
+
+// Hangup is the payload sent when an user leaves a call.
+type HangupCall struct {
+	RoomID string `json:"room_id"`
+	UserID uint   `json:"user_id"`
 }
 
 type RoomMessage struct {

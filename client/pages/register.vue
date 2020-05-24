@@ -60,13 +60,17 @@
     },
     methods: {
       async handleRegister() {
+        this.loading = true;
         try {
           const {data} = await this.$axios.post('/user/v1/register', this.registration);
           await this.$auth.loginWith('local', {
             data: this.registration
           });
+
+          this.loading = false;
           await this.$router.push('/')
         } catch (e) {
+          this.loading = false;
           console.error(e)
         }
       }
