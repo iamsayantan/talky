@@ -70,7 +70,7 @@ func (c *Client) readPump() {
 	c.conn.SetReadLimit(maxMessageSize)
 	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		log.Printf("Received PING, sending PONG")
+		log.Printf("Received PING, sending PONG. User: %s", c.user.Username)
 		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
