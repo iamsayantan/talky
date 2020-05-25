@@ -60,7 +60,9 @@ class Signalling {
 
   heartbeat() {
     this._hearbeatId = setInterval(() => {
-      this._websocket.send('PING');
+      this.send('HEARTBEAT', {
+        data: 'PING'
+      });
     }, 30000);
   }
 
