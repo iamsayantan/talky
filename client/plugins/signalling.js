@@ -7,6 +7,7 @@ class Signalling {
     this._websocketUrl = websocketURL;
     this._websocket = null;
     this._onSignallingMessage = null;
+    this._hearbeatId = null;
 
     Signalling.instance = this
     return this
@@ -23,6 +24,7 @@ class Signalling {
 
       this._websocket.onopen = () => {
         resolve();
+        this.heartbeat();
         console.log('[Signalling] Websocket connection opened.')
       };
 
@@ -33,6 +35,7 @@ class Signalling {
 
       this._websocket.onclose = (evt) => {
         console.log('[Signalling] Websocket connection closed: ', evt);
+        clearInterval(this._hearbeatId);
         this._websocket = null
       }
 
@@ -53,6 +56,12 @@ class Signalling {
     if (this._websocket && this._websocket.readyState === WebSocket.OPEN) {
       this._websocket.send(JSON.stringify(wsMessage))
     }
+  }
+
+  heartbeat() {
+    this._hearbeatId = setInterval(() => {
+      this._websocket.send('PING');
+    }, 30000);
   }
 
   registerOnSignallingMessageHandler(handler) {
