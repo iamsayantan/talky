@@ -12,10 +12,10 @@ const (
 	writeWait = 10 * time.Second
 
 	// Time allowed to read the next pong message from the peer.
-	pongWait = 10 * time.Second
+	pongWait = 100 * time.Second
 
 	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
+	pingPeriod = (pongWait * 6) / 10
 
 	// Maximum message size allowed from peer.
 	maxMessageSize = 1024 * 100
@@ -70,7 +70,6 @@ func (c *Client) readPump() {
 	c.conn.SetReadLimit(maxMessageSize)
 	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		log.Printf("Writing PONG. User: %s", c.user.Username)
 		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
@@ -135,7 +134,6 @@ func (c *Client) writePump() {
 				log.Printf("Error writing PingMessage %v", err)
 				return
 			}
-			log.Printf("Writing PingMessage. User: %s", c.user.Username)
 		}
 	}
 }
