@@ -38,7 +38,7 @@ type HangupCall struct {
 
 type RoomMessage struct {
 	RoomID       string `json:"room_id"`        // RoomID is id of the room for where the SDPMessage is intended.
-	UserID       uint   `json:"user_id"`        // UserID is the user who sent the message. The message will not be sent to this user.
+	User         User   `json:"user"`           // User is the user who sent the message.
 	TargetUserID uint   `json:"target_user_id"` // TargetUserID holds the id of the user if the message is sent specifically to this user.
 }
 

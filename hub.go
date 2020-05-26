@@ -153,7 +153,7 @@ func (h *Hub) PropagateSDPOffer(payload SDPMessage) error {
 	for _, member := range room.Members {
 		if client, ok := h.clients[member.ID]; ok {
 			// we exclude the the user who sent the offer.
-			if client.user.ID == payload.UserID {
+			if client.user.ID == payload.User.ID {
 				continue
 			}
 
@@ -205,7 +205,7 @@ func (h *Hub) SendICE(payload ICEMessage) error {
 	resp, _ := json.Marshal(responsePayload)
 	for _, member := range room.Members {
 		if client, ok := h.clients[member.ID]; ok {
-			if client.user.ID == payload.UserID {
+			if client.user.ID == payload.User.ID {
 				continue
 			}
 
