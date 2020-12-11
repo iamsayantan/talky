@@ -17,11 +17,11 @@
     >
       <v-col cols="6">
         Local Video
-        <video class="local-video" autoplay playsinline muted ref="localVideo"></video>
+        <video class="local-video" autoplay playsinline muted controls ref="localVideo"></video>
       </v-col>
-      <v-col cols="6">
-        Remote Video
-        <video id="remote-video" class="local-video" autoplay playsinline ref="remoteVideo"></video>
+      <v-col v-for="room_member in room_members" :key="room_member.user_details.id" cols="6">
+        {{ room_member.user_details.username }}
+        <video :id="`remote-video-${room_member.user_details.id}`" class="local-video" autoplay playsinline :ref="`remoteVideo-${room_member.user_details.id}`" ></video>
       </v-col>
 
       <v-btn
@@ -40,6 +40,8 @@
 </template>
 
 <script>
+  const ROOM_ID_LENGTH = 32;
+
   export default {
     name: "index",
     data() {
@@ -52,39 +54,26 @@
           a: 'AUDIO',
           av: 'AUDIO_VIDEO'
         },
-        webrtc: {
-          room_id: null,
-          room_type: null,
-          room_members: {},
-          member_tracks: {},
-          localStream: null,
-          pc: null,
-          mediaStreamConstraint: {
-            audio: true,
-            video: true
-          }
-        }
+
+        localStream: null,
+        room_id: null,
+        room_type: null,
+        room_members: {}
       }
     },
     async mounted() {
       const { room_type, room_id } = this.$route.params;
-      if (!room_type || !room_id) {
-        this.error.isError = true
-        return;
-      }
-
-      if (room_type !== 'a' && room_type !== 'av') {
+      try {
+        this.validateRoomDetails(room_id, room_type);
+      } catch (e) {
+        console.error('validateRoomDetails', e);
         this.error.isError = true;
+        this.error.errorMessage = e.messages;
         return;
       }
 
-      if (room_id.length !== 32) {
-        this.error.isError = true;
-        return;
-      }
-
-      this.webrtc.room_type = this.room_types[room_type];
-      this.webrtc.room_id = room_id;
+      this.room_id = room_id;
+      this.room_type = this.room_types[room_type];
 
       window.onunload = () => {
         this.hangupIfConnected();
@@ -92,8 +81,8 @@
 
       // everything looks okay, its time to initiate the websocket connection to the server.
       await this.$Signalling.open(this.$auth.getToken('local'));
-      this.createOrJoinRoom(room_type, room_id);
       this.$Signalling.registerOnSignallingMessageHandler(this.signallingHandler.bind(this));
+      this.initiate();
     },
 
     beforeDestroy() {
@@ -101,13 +90,41 @@
     },
 
     methods: {
-      hangupIfConnected() {
-        console.log('hangupIfConnected called');
-        if (this.webrtc.room_members[this.$auth.user.id]) {
-          this.hangup()
+      async initiate() {
+        const { room_type, room_id } = this.$route.params;
+
+        try {
+          await this.initiateLocalVideo();
+          this.createOrJoinRoom(room_type, room_id);
+        } catch (e) {
+          this.error.isError = true
+          this.error.errorMessage = e.message
         }
       },
 
+      /**
+       * @param roomID
+       * @param roomType
+       * @returns {Error}
+       */
+      validateRoomDetails(roomID, roomType) {
+        if (!roomID || !roomType) {
+          return new Error('Invalid room details');
+        }
+
+        if (roomType !== 'a' && roomType !== 'av') {
+          return new Error('Invalid room details');
+        }
+
+        if (roomID.length !== ROOM_ID_LENGTH) {
+          return new Error('Invalid room details');
+        }
+      },
+
+      /**
+       * @param roomType
+       * @param roomId
+       */
       createOrJoinRoom(roomType, roomId) {
         const payload = {
           room_type: roomType === 'av' ? 'AUDIO_VIDEO' : 'AUDIO',
@@ -117,13 +134,24 @@
         this.$Signalling.send('CREATE_OR_JOIN', payload)
       },
 
+      hangupIfConnected() {
+        console.log('[hangupIfConnected] Removing user');
+        this.hangup()
+      },
+
+      /**
+       * Handles signalling messages from the server side.
+       * @param data
+       */
       signallingHandler(data) {
         data = JSON.parse(data);
         switch (data.type) {
-          case 'error':
-            this.error.isError = true;
-            this.error.errorMessage = data.payload;
-            return;
+          // ROOM_JOIN event is triggered when someone joins a room in the server side. This event occurs as a result
+          // of CREATE_OR_JOIN event from the client side. The joined user could be the currently authenticated user
+          // or some other peer who joined the room.
+          case 'ROOM_JOIN':
+            this.handleRoomJoin(data.payload);
+            break;
           case 'OFFER':
             this.handleRemoteOffer(data.payload);
             break;
@@ -133,21 +161,71 @@
           case 'ICE_CANDIDATE':
             this.handleNewICECandidate(data.payload);
             break;
-          case 'ROOM_JOIN':
-            this.handleRoomJoin(data.payload);
-            break;
           case 'HANGUP':
             this.handleHangup(data.payload);
             break;
+          case 'error':
+            this.error.isError = true;
+            this.error.errorMessage = data.payload;
+            return;
         }
       },
 
-      createPeerConnection() {
-        if (this.webrtc.pc) {
+      /**
+       * If the joined user is the currently authenticated user, then we start this user's local video stream and
+       * wait for other people to join. For any remote peer join, we create a peer connection and send him an offer.
+       *
+       * @param room_id
+       * @param user
+       * @returns {Promise<void>}
+       */
+      async handleRoomJoin({ room_id, user }) {
+        console.log('[handleRoomJoin] Handling room join.');
+        if (room_id !== this.room_id) {
+          console.log(`Mismatching room ID. Current ${this.room_id} Incoming: ${room_id}`);
           return;
         }
 
-        this.webrtc.pc = new RTCPeerConnection({
+        if (this.room_members[user.id]) {
+          console.log('Member already inside room.', this.room_members);
+          return;
+        }
+
+        let messageString = null;
+        if (user.id === this.$auth.user.id) {
+          console.log('[handleRoomJoin] Event received for currently authenticated user.', user);
+          messageString = 'You joined the room';
+        } else {
+          console.log('[handleRoomJoin] Event received for new user.', user);
+          messageString = `${user.username} joined the room`;
+          this.processUserJoin(user);
+        }
+
+        this.$toast.success(messageString);
+      },
+
+      processUserJoin(user) {
+        if (this.room_members[user.id]) {
+          console.error('[processUserJoin] User already a member of the room', user.username);
+          return;
+        }
+
+        console.log('[processUserJoin] Creating RTCPeerConnection for user', user.username);
+        const peerConnection = this.createPeerConnection(user);
+
+        console.log('[processUserJoin] Adding local stream to RTCPeerConnection for user', user.username);
+        this.localStream.getTracks().forEach(track => peerConnection.addTrack(track, this.localStream));
+
+        const mediaStream = new MediaStream();
+        this.$set(this.room_members, user.id, {
+          user_details: user,
+          peer_connection: peerConnection,
+          media_stream: mediaStream
+        });
+      },
+
+      createPeerConnection(user) {
+        const peerConnection = new RTCPeerConnection({
           iceServers: [
             {
               urls: 'stun:stun.l.google.com:19302'
@@ -155,18 +233,22 @@
           ]
         });
 
-        this.webrtc.pc.ontrack = event => {
-          console.log('ontrack', event.streams);
-          this.$refs.remoteVideo.srcObject = event.streams[0]
+        peerConnection.ontrack = event => {
+          console.log('[ontrack]', event);
+          this.$refs[`remoteVideo-${user.id}`].srcObject = event.streams[0];
+          console.log('[ontrack] Remote video for user: ', {
+            user,
+            video: this.$refs[`remoteVideo-${user.id}`]
+          })
         };
 
-        this.webrtc.pc.onicecandidate = ({candidate}) => {
-          console.log('onicecandidate:', candidate);
+        peerConnection.onicecandidate = ({candidate}) => {
+          console.log('[onicecandidate]', candidate);
           if (candidate) {
             const payload = {
-              room_id: this.webrtc.room_id,
-              user_id: this.$auth.user.id,
-              target_user_id: null,
+              room_id: this.room_id,
+              user: this.$auth.user,
+              target_user_id: user.id,
               candidate: candidate
             };
 
@@ -174,25 +256,29 @@
           }
         };
 
-        this.webrtc.pc.onnegotiationneeded = async (evt) => {
-          console.log('onnegotiationneeded', evt);
-          try {
-            const offer = await this.webrtc.pc.createOffer();
-            await this.webrtc.pc.setLocalDescription(offer);
-            const payload = {
-              room_id: this.webrtc.room_id,
-              user_id: this.$auth.user.id,
-              target_user_id: null,
-              sdp: this.webrtc.pc.localDescription
-            };
+        peerConnection.onnegotiationneeded = async (evt) => {
+          console.log('[onnegotiationneeded]', evt);
+          if (!peerConnection.remoteDescription) {
+            console.log('[onnegotiationneeded] Remote description not set. Generating offer.');
+            try {
+              const offer = await peerConnection.createOffer();
+              await peerConnection.setLocalDescription(offer);
+              console.log('[onnegotiationneeded] Local description set.', peerConnection.localDescription);
+              const payload = {
+                room_id: this.room_id,
+                user: this.$auth.user,
+                target_user_id: user.id,
+                sdp: peerConnection.localDescription
+              };
 
-            this.$Signalling.send('OFFER', payload)
-          } catch (e) {
-            console.log(e)
+              this.$Signalling.send('OFFER', payload)
+            } catch (e) {
+              console.error('[onnegotiationneeded] Error', e)
+            }
           }
         };
 
-        this.webrtc.pc.onremovetrack = (evt) => {
+        peerConnection.onremovetrack = (evt) => {
           console.log('onremovetrack', evt);
           const stream = this.$refs.remoteVideo.srcObject;
           if (stream.getTracks().length === 0) {
@@ -201,154 +287,169 @@
           }
         };
 
-        this.webrtc.pc.oniceconnectionstatechange = (evt) => {
+        peerConnection.oniceconnectionstatechange = (evt) => {
           console.log('oniceconnectionstatechange', evt)
         };
 
-        this.webrtc.pc.onicegatheringstatechange = (evt) => {
+        peerConnection.onicegatheringstatechange = (evt) => {
           console.log('onicegatheringstatechange', evt)
-        }
+        };
 
-        this.webrtc.pc.onsignalingstatechange = (evt) => {
+        peerConnection.onsignalingstatechange = (evt) => {
           console.log('onsignalingstatechange', evt)
-        }
-      },
+        };
 
-      async handleRoomJoin({ room_id, user }) {
-        if (room_id !== this.webrtc.room_id) {
-          console.log(`Mismatching room ID. Current ${this.room_id} Incoming: ${room_id}`);
-          return;
-        }
-
-        if (this.webrtc.room_members[user.id]) {
-          console.log('Member already inside room.', this.webrtc.room_members);
-          return;
-        }
-
-        this.webrtc.room_members[user.id] = user;
-        const messageString = `${user.id === this.$auth.user.id ? 'You' : user.username} joined the room`;
-        this.$toast.success(messageString);
-
-        if (user.id === this.$auth.user.id) {
-          this.initiateLocalVideo();
-        }
+        return peerConnection;
       },
 
       handleHangup({ room_id, user_id }) {
-        if (room_id !== this.webrtc.room_id) {
+        console.log('[handleHangup] Remote user hung up.', user_id)
+        if (room_id !== this.room_id) {
           console.log(`Mismatching room ID. Current ${this.room_id} Incoming: ${room_id}`);
           return;
         }
 
-        if (this.webrtc.room_members[user_id]) {
-          const user = this.webrtc.room_members[user_id];
-          delete this.webrtc.room_members[user_id];
+        if (this.room_members[user_id]) {
+          console.log('[handleHangup] Removing remote user.', user_id);
+          const user = this.room_members[user_id].user_details;
+          this.$delete(this.room_members, user_id);
 
-          if (this.$refs.remoteVideo.srcObject) {
-            this.$refs.remoteVideo.srcObject = null;
-            this.$refs.remoteVideo.removeAttribute('src');
-            this.$refs.remoteVideo.removeAttribute('srcObject');
+          console.log('[handleHangup] User removed', user)
+          if (this.$refs[`remoteVideo-${user.id}`] && this.$refs[`remoteVideo-${user.id}`].srcObject) {
+            // this.$refs[`remoteVideo-${user.id}`].removeAttribute('src');
+            // this.$refs[`remoteVideo-${user.id}`].removeAttribute('srcObject');
+            // this.$refs[`remoteVideo-${user.id}`].srcObject = null;
           }
 
           this.$toast.error(`${user.username} left the room`);
+        } else {
+          console.error('[handleHangup] Remote user not found in the local list.', user_id)
         }
       },
 
-      async handleRemoteOffer(offerPayload) {
+      /**
+       * When user receives an offer from a peer, most likely there is no peer connection between them. So we need to create
+       * a peer connection and add the user details in the client side of this user.
+       *
+       * @param room_id
+       * @param user
+       * @param target_user_id
+       * @param sdp
+       * @returns {Promise<void>}
+       */
+      async handleRemoteOffer({ room_id, user, target_user_id, sdp }) {
+        console.log('[handleRemoteOffer] Offer Received', { room_id, user, target_user_id, sdp });
+
+        if (!this.room_members[user.id]) {
+          console.log('[handleRemoteOffer] User not in member list. Adding to member list.', { room_id, user, target_user_id, sdp });
+          this.processUserJoin(user);
+        }
+
+        const peerConnection = this.room_members[user.id].peer_connection;
+
         try {
-          const sessionDesc = new RTCSessionDescription(offerPayload.sdp);
-          await this.webrtc.pc.setRemoteDescription(sessionDesc);
-          const answer = await this.webrtc.pc.createAnswer();
-          await this.webrtc.pc.setLocalDescription(answer);
+          const sessionDesc = new RTCSessionDescription(sdp);
+          await peerConnection.setRemoteDescription(sessionDesc);
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
 
           const payload = {
-            room_id: this.webrtc.room_id,
-            user_id: this.$auth.user.id,
-            target_user_id: offerPayload.user_id,
-            sdp: this.webrtc.pc.localDescription
+            room_id: this.room_id,
+            user: this.$auth.user,
+            target_user_id: user.id,
+            sdp: peerConnection.localDescription
           };
 
           this.$Signalling.send('ANSWER', payload);
         } catch (e) {
-          console.error('handleRemoteOffer')
+          console.error('handleRemoteOffer', e)
         }
       },
 
-      async handleRemoteAnswer(answerPayload) {
-        const sessionDesc = new RTCSessionDescription(answerPayload.sdp);
-        await this.webrtc.pc.setRemoteDescription(sessionDesc)
+      async handleRemoteAnswer({ user, sdp }) {
+        console.log('[handleRemoteAnswer] Answer received from user: ', user.username);
+        if (!this.room_members[user.id] || !this.room_members[user.id].peer_connection) {
+          return;
+        }
+
+        const sessionDesc = new RTCSessionDescription(sdp);
+        await this.room_members[user.id].peer_connection.setRemoteDescription(sessionDesc)
       },
 
-      async handleNewICECandidate(candidatePayload) {
-        console.log('ReceivedCandidate', candidatePayload)
-        const candidate = new RTCIceCandidate(candidatePayload.candidate)
+      async handleNewICECandidate({ user, candidate }) {
+        if (!this.room_members[user.id] || this.room_members[user.id].peer_connection) {
+          return;
+        }
+        console.log('ReceivedCandidate', candidate);
+        const rtcCandidate = new RTCIceCandidate(candidate);
         try {
-          await this.webrtc.pc.addIceCandidate(candidate);
+          await this.room_members[user.id].peer_connection.addIceCandidate(rtcCandidate);
         } catch (e) {
           console.error('icecandidate error', {e, candidate})
         }
       },
 
       async initiateLocalVideo() {
-        // peer connection already established.
-        if (this.webrtc.pc) {
-          return;
-        }
+        const localStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: {
+            width: {
+              ideal: 320
+            },
+            height: {
+              ideal: 240
+            },
+            aspectRatio: { ideal: 1.7777777778 }
+          },
 
-        this.createPeerConnection();
-
-        try {
-          const localStream = await navigator.mediaDevices.getUserMedia(this.webrtc.mediaStreamConstraint);
-          this.$refs.localVideo.srcObject = localStream;
-          localStream.getTracks().forEach(track => this.webrtc.pc.addTrack(track, localStream))
-        } catch (e) {
-          console.log('Error in something')
-          this.error.isError = true;
-          this.error.errorMessage = e.toString()
-        }
+        });
+        console.log('[LocalStream]', localStream)
+        this.$refs.localVideo.srcObject = localStream;
+        this.localStream = localStream;
       },
 
       async hangup() {
-        this.closeVideoCall();
+        console.log('[hangup]');
+        // this.closeVideoCall();
         this.$Signalling.send('HANGUP', {
-          room_id: this.webrtc.room_id,
+          room_id: this.room_id,
           user_id: this.$auth.user.id
         });
 
-        delete this.webrtc.room_members[this.$auth.user.id];
-        await this.$router.push('/');
+        this.$delete(this.room_members, this.$auth.user.id);
+        // await this.$router.push('/');
       },
 
-      async closeVideoCall() {
-        if (!this.webrtc.pc) {
-          return;
-        }
-
-        this.webrtc.pc.ontrack = null;
-        this.webrtc.pc.onremovetrack = null;
-        this.webrtc.pc.onremovestream = null;
-        this.webrtc.pc.onicecandidate = null;
-        this.webrtc.pc.onicecandidate = null;
-        this.webrtc.pc.oniceconnectionstatechange = null;
-        this.webrtc.pc.onsignalingstatechange = null;
-        this.webrtc.pc.onicegatheringstatechange = null;
-        this.webrtc.pc.onnegotiationneeded = null;
-
-        if (this.$refs.remoteVideo && this.$refs.remoteVideo.srcObject) {
-          this.$refs.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-          this.$refs.remoteVideo.removeAttribute('src');
-          this.$refs.remoteVideo.removeAttribute('srcObject');
-        }
-
-        if (this.$refs.localVideo && this.$refs.localVideo.srcObject) {
-          this.$refs.localVideo.srcObject.getTracks().forEach(track => track.stop());
-          this.$refs.localVideo.removeAttribute('src');
-          this.$refs.localVideo.removeAttribute('srcObject');
-        }
-
-        this.webrtc.pc.close();
-        this.webrtc.pc = null;
-      }
+      // async closeVideoCall() {
+      //   if (!this.webrtc.pc) {
+      //     return;
+      //   }
+      //
+      //   this.webrtc.pc.ontrack = null;
+      //   this.webrtc.pc.onremovetrack = null;
+      //   this.webrtc.pc.onremovestream = null;
+      //   this.webrtc.pc.onicecandidate = null;
+      //   this.webrtc.pc.onicecandidate = null;
+      //   this.webrtc.pc.oniceconnectionstatechange = null;
+      //   this.webrtc.pc.onsignalingstatechange = null;
+      //   this.webrtc.pc.onicegatheringstatechange = null;
+      //   this.webrtc.pc.onnegotiationneeded = null;
+      //
+      //   if (this.$refs.remoteVideo && this.$refs.remoteVideo.srcObject) {
+      //     this.$refs.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+      //     this.$refs.remoteVideo.removeAttribute('src');
+      //     this.$refs.remoteVideo.removeAttribute('srcObject');
+      //   }
+      //
+      //   if (this.$refs.localVideo && this.$refs.localVideo.srcObject) {
+      //     this.$refs.localVideo.srcObject.getTracks().forEach(track => track.stop());
+      //     this.$refs.localVideo.removeAttribute('src');
+      //     this.$refs.localVideo.removeAttribute('srcObject');
+      //   }
+      //
+      //   this.webrtc.pc.close();
+      //   this.webrtc.pc = null;
+      // }
     }
   }
 </script>
