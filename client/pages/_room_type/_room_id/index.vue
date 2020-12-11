@@ -17,7 +17,7 @@
     >
       <v-col cols="6">
         Local Video
-        <video class="local-video" autoplay playsinline muted ref="localVideo"></video>
+        <video class="local-video" autoplay playsinline muted controls ref="localVideo"></video>
       </v-col>
       <v-col v-for="room_member in room_members" :key="room_member.user_details.id" cols="6">
         {{ room_member.user_details.username }}
@@ -58,20 +58,7 @@
         localStream: null,
         room_id: null,
         room_type: null,
-        room_members: {},
-
-        webrtc: {
-          room_id: null,
-          room_type: null,
-          room_members: {},
-          member_tracks: {},
-          localStream: null,
-          pc: null,
-          mediaStreamConstraint: {
-            audio: true,
-            video: true
-          }
-        }
+        room_members: {}
       }
     },
     async mounted() {
@@ -88,17 +75,14 @@
       this.room_id = room_id;
       this.room_type = this.room_types[room_type];
 
-      this.webrtc.room_type = this.room_types[room_type];
-      this.webrtc.room_id = room_id;
-
       window.onunload = () => {
         this.hangupIfConnected();
       };
 
       // everything looks okay, its time to initiate the websocket connection to the server.
       await this.$Signalling.open(this.$auth.getToken('local'));
-      this.createOrJoinRoom(room_type, room_id);
       this.$Signalling.registerOnSignallingMessageHandler(this.signallingHandler.bind(this));
+      this.initiate();
     },
 
     beforeDestroy() {
@@ -106,6 +90,18 @@
     },
 
     methods: {
+      async initiate() {
+        const { room_type, room_id } = this.$route.params;
+
+        try {
+          await this.initiateLocalVideo();
+          this.createOrJoinRoom(room_type, room_id);
+        } catch (e) {
+          this.error.isError = true
+          this.error.errorMessage = e.message
+        }
+      },
+
       /**
        * @param roomID
        * @param roomType
@@ -139,9 +135,8 @@
       },
 
       hangupIfConnected() {
-        // if (this.webrtc.room_members[this.$auth.user.id]) {
-        //   this.hangup()
-        // }
+        console.log('[hangupIfConnected] Removing user');
+        this.hangup()
       },
 
       /**
@@ -185,6 +180,7 @@
        * @returns {Promise<void>}
        */
       async handleRoomJoin({ room_id, user }) {
+        console.log('[handleRoomJoin] Handling room join.');
         if (room_id !== this.room_id) {
           console.log(`Mismatching room ID. Current ${this.room_id} Incoming: ${room_id}`);
           return;
@@ -197,9 +193,10 @@
 
         let messageString = null;
         if (user.id === this.$auth.user.id) {
+          console.log('[handleRoomJoin] Event received for currently authenticated user.', user);
           messageString = 'You joined the room';
-          this.initiateLocalVideo()
         } else {
+          console.log('[handleRoomJoin] Event received for new user.', user);
           messageString = `${user.username} joined the room`;
           this.processUserJoin(user);
         }
@@ -209,14 +206,22 @@
 
       processUserJoin(user) {
         if (this.room_members[user.id]) {
+          console.error('[processUserJoin] User already a member of the room', user.username);
           return;
         }
 
+        console.log('[processUserJoin] Creating RTCPeerConnection for user', user.username);
         const peerConnection = this.createPeerConnection(user);
-        this.room_members[user.id] = {
+
+        console.log('[processUserJoin] Adding local stream to RTCPeerConnection for user', user.username);
+        this.localStream.getTracks().forEach(track => peerConnection.addTrack(track, this.localStream));
+
+        const mediaStream = new MediaStream();
+        this.$set(this.room_members, user.id, {
           user_details: user,
-          peer_connection: peerConnection
-        };
+          peer_connection: peerConnection,
+          media_stream: mediaStream
+        });
       },
 
       createPeerConnection(user) {
@@ -229,13 +234,12 @@
         });
 
         peerConnection.ontrack = event => {
-          console.log('ontrack', event.streams);
-          this.room_members[user.id].stream = event.streams[0];
+          console.log('[ontrack]', event);
           this.$refs[`remoteVideo-${user.id}`].srcObject = event.streams[0];
         };
 
         peerConnection.onicecandidate = ({candidate}) => {
-          console.log('onicecandidate:', candidate);
+          console.log('[onicecandidate]', candidate);
           if (candidate) {
             const payload = {
               room_id: this.room_id,
@@ -249,20 +253,24 @@
         };
 
         peerConnection.onnegotiationneeded = async (evt) => {
-          console.log('onnegotiationneeded', evt);
-          try {
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            const payload = {
-              room_id: this.webrtc.room_id,
-              user: this.$auth.user,
-              target_user_id: user.id,
-              sdp: peerConnection.localDescription
-            };
+          console.log('[onnegotiationneeded]', evt);
+          if (!peerConnection.remoteDescription) {
+            console.log('[onnegotiationneeded] Remote description not set. Generating offer.');
+            try {
+              const offer = await peerConnection.createOffer();
+              await peerConnection.setLocalDescription(offer);
+              console.log('[onnegotiationneeded] Local description set.', peerConnection.localDescription);
+              const payload = {
+                room_id: this.room_id,
+                user: this.$auth.user,
+                target_user_id: user.id,
+                sdp: peerConnection.localDescription
+              };
 
-            this.$Signalling.send('OFFER', payload)
-          } catch (e) {
-            console.log(e)
+              this.$Signalling.send('OFFER', payload)
+            } catch (e) {
+              console.error('[onnegotiationneeded] Error', e)
+            }
           }
         };
 
@@ -291,22 +299,27 @@
       },
 
       handleHangup({ room_id, user_id }) {
-        if (room_id !== this.webrtc.room_id) {
+        console.log('[handleHangup] Remote user hung up.', user_id)
+        if (room_id !== this.room_id) {
           console.log(`Mismatching room ID. Current ${this.room_id} Incoming: ${room_id}`);
           return;
         }
 
-        if (this.webrtc.room_members[user_id]) {
-          const user = this.webrtc.room_members[user_id];
-          delete this.webrtc.room_members[user_id];
+        if (this.room_members[user_id]) {
+          console.log('[handleHangup] Removing remote user.', user_id);
+          const user = this.room_members[user_id].user_details;
+          this.$delete(this.room_members, user_id);
 
-          if (this.$refs.remoteVideo.srcObject) {
-            this.$refs.remoteVideo.srcObject = null;
-            this.$refs.remoteVideo.removeAttribute('src');
-            this.$refs.remoteVideo.removeAttribute('srcObject');
+          console.log('[handleHangup] User removed', user)
+          if (this.$refs[`remoteVideo-${user.id}`] && this.$refs[`remoteVideo-${user.id}`].srcObject) {
+            // this.$refs[`remoteVideo-${user.id}`].removeAttribute('src');
+            // this.$refs[`remoteVideo-${user.id}`].removeAttribute('srcObject');
+            // this.$refs[`remoteVideo-${user.id}`].srcObject = null;
           }
 
           this.$toast.error(`${user.username} left the room`);
+        } else {
+          console.error('[handleHangup] Remote user not found in the local list.', user_id)
         }
       },
 
@@ -321,7 +334,10 @@
        * @returns {Promise<void>}
        */
       async handleRemoteOffer({ room_id, user, target_user_id, sdp }) {
+        console.log('[handleRemoteOffer] Offer Received', { room_id, user, target_user_id, sdp });
+
         if (!this.room_members[user.id]) {
+          console.log('[handleRemoteOffer] User not in member list. Adding to member list.', { room_id, user, target_user_id, sdp });
           this.processUserJoin(user);
         }
 
@@ -334,7 +350,7 @@
           await peerConnection.setLocalDescription(answer);
 
           const payload = {
-            room_id: this.webrtc.room_id,
+            room_id: this.room_id,
             user: this.$auth.user,
             target_user_id: user.id,
             sdp: peerConnection.localDescription
@@ -347,7 +363,8 @@
       },
 
       async handleRemoteAnswer({ user, sdp }) {
-        if (!this.room_members[user.id] || this.room_members[user.id].peer_connection) {
+        console.log('[handleRemoteAnswer] Answer received from user: ', user.username);
+        if (!this.room_members[user.id] || !this.room_members[user.id].peer_connection) {
           return;
         }
 
@@ -369,70 +386,66 @@
       },
 
       async initiateLocalVideo() {
-        try {
-          const localStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: {
-              width: {
-                ideal: 320
-              },
-              height: {
-                ideal: 240
-              },
-              aspectRatio: { ideal: 1.7777777778 }
+        const localStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: {
+            width: {
+              ideal: 320
             },
+            height: {
+              ideal: 240
+            },
+            aspectRatio: { ideal: 1.7777777778 }
+          },
 
-          });
-          this.$refs.localVideo.srcObject = localStream;
-          this.localStream = localStream;
-        } catch (e) {
-          console.log('Error in something')
-          this.error.isError = true;
-          this.error.errorMessage = e.toString()
-        }
+        });
+        console.log('[LocalStream]', localStream)
+        this.$refs.localVideo.srcObject = localStream;
+        this.localStream = localStream;
       },
 
       async hangup() {
-        this.closeVideoCall();
+        console.log('[hangup]');
+        // this.closeVideoCall();
         this.$Signalling.send('HANGUP', {
-          room_id: this.webrtc.room_id,
+          room_id: this.room_id,
           user_id: this.$auth.user.id
         });
 
-        delete this.webrtc.room_members[this.$auth.user.id];
-        await this.$router.push('/');
+        this.$delete(this.room_members, this.$auth.user.id);
+        // await this.$router.push('/');
       },
 
-      async closeVideoCall() {
-        if (!this.webrtc.pc) {
-          return;
-        }
-
-        this.webrtc.pc.ontrack = null;
-        this.webrtc.pc.onremovetrack = null;
-        this.webrtc.pc.onremovestream = null;
-        this.webrtc.pc.onicecandidate = null;
-        this.webrtc.pc.onicecandidate = null;
-        this.webrtc.pc.oniceconnectionstatechange = null;
-        this.webrtc.pc.onsignalingstatechange = null;
-        this.webrtc.pc.onicegatheringstatechange = null;
-        this.webrtc.pc.onnegotiationneeded = null;
-
-        if (this.$refs.remoteVideo && this.$refs.remoteVideo.srcObject) {
-          this.$refs.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
-          this.$refs.remoteVideo.removeAttribute('src');
-          this.$refs.remoteVideo.removeAttribute('srcObject');
-        }
-
-        if (this.$refs.localVideo && this.$refs.localVideo.srcObject) {
-          this.$refs.localVideo.srcObject.getTracks().forEach(track => track.stop());
-          this.$refs.localVideo.removeAttribute('src');
-          this.$refs.localVideo.removeAttribute('srcObject');
-        }
-
-        this.webrtc.pc.close();
-        this.webrtc.pc = null;
-      }
+      // async closeVideoCall() {
+      //   if (!this.webrtc.pc) {
+      //     return;
+      //   }
+      //
+      //   this.webrtc.pc.ontrack = null;
+      //   this.webrtc.pc.onremovetrack = null;
+      //   this.webrtc.pc.onremovestream = null;
+      //   this.webrtc.pc.onicecandidate = null;
+      //   this.webrtc.pc.onicecandidate = null;
+      //   this.webrtc.pc.oniceconnectionstatechange = null;
+      //   this.webrtc.pc.onsignalingstatechange = null;
+      //   this.webrtc.pc.onicegatheringstatechange = null;
+      //   this.webrtc.pc.onnegotiationneeded = null;
+      //
+      //   if (this.$refs.remoteVideo && this.$refs.remoteVideo.srcObject) {
+      //     this.$refs.remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+      //     this.$refs.remoteVideo.removeAttribute('src');
+      //     this.$refs.remoteVideo.removeAttribute('srcObject');
+      //   }
+      //
+      //   if (this.$refs.localVideo && this.$refs.localVideo.srcObject) {
+      //     this.$refs.localVideo.srcObject.getTracks().forEach(track => track.stop());
+      //     this.$refs.localVideo.removeAttribute('src');
+      //     this.$refs.localVideo.removeAttribute('srcObject');
+      //   }
+      //
+      //   this.webrtc.pc.close();
+      //   this.webrtc.pc = null;
+      // }
     }
   }
 </script>
