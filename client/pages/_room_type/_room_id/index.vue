@@ -228,18 +228,38 @@
         const peerConnection = new RTCPeerConnection({
           iceServers: [
             {
-              urls: 'stun:stun.l.google.com:19302'
+              urls: [ "stun:bn-turn1.xirsys.com" ]
+            },
+            {
+              urls: [
+                "turn:bn-turn1.xirsys.com:80?transport=udp",
+                "turn:bn-turn1.xirsys.com:3478?transport=udp",
+              ],
+              username: "1OefJQNHAvPkVyolvfv1j5pqvgq5OilWKVfp31Yc4AeJQDbKYng-qUFE_WX_vZqxAAAAAF_W7kNpYW1zYXlhbnRhbg==",
+              credential: "666c190e-3dc7-11eb-8899-0242ac140004",
             }
           ]
         });
 
         peerConnection.ontrack = event => {
           console.log('[ontrack]', event);
-          this.$refs[`remoteVideo-${user.id}`].srcObject = event.streams[0];
-          console.log('[ontrack] Remote video for user: ', {
-            user,
-            video: this.$refs[`remoteVideo-${user.id}`]
-          })
+          const videoElement = this.$refs[`remoteVideo-${user.id}`];
+          const astream = event.streams[0];
+
+          try {
+            videoElement.srcObject = astream;
+          } catch (err) {
+            try {
+              videoElement.src = window.webkitURL.createObjectURL(astream);
+            } catch (err) {
+              try {
+                videoElement.src = window.URL.createObjectURL(astream);
+              } catch (err) {
+                return err
+              }
+            }
+          }
+          console.log('[ontrack] Remote video for user: ' + user.username, this.$refs[`remoteVideo-${user.id}`])
         };
 
         peerConnection.onicecandidate = ({candidate}) => {
@@ -261,7 +281,11 @@
           if (!peerConnection.remoteDescription) {
             console.log('[onnegotiationneeded] Remote description not set. Generating offer.');
             try {
-              const offer = await peerConnection.createOffer();
+              const offer = await peerConnection.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true,
+                iceRestart: true
+              });
               await peerConnection.setLocalDescription(offer);
               console.log('[onnegotiationneeded] Local description set.', peerConnection.localDescription);
               const payload = {
@@ -377,35 +401,44 @@
       },
 
       async handleNewICECandidate({ user, candidate }) {
-        if (!this.room_members[user.id] || this.room_members[user.id].peer_connection) {
+        if (!this.room_members[user.id] || !this.room_members[user.id].peer_connection) {
+          console.error('[handleNewICECandidate] Error adding ice candidate', {
+            room_member: this.room_members[user.id],
+            peer_connection: this.room_members[user.id].peer_connection
+          });
           return;
         }
-        console.log('ReceivedCandidate', candidate);
+        console.log('[handleNewICECandidate]', candidate);
         const rtcCandidate = new RTCIceCandidate(candidate);
         try {
           await this.room_members[user.id].peer_connection.addIceCandidate(rtcCandidate);
+          console.log('[handleNewICECandidate] Successfully added ice candidate.')
         } catch (e) {
-          console.error('icecandidate error', {e, candidate})
+          console.error('[handleNewICECandidate]', {e, candidate})
         }
       },
 
       async initiateLocalVideo() {
-        const localStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: {
-            width: {
-              ideal: 320
+        try {
+          const localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: {
+              width: {
+                ideal: 320
+              },
+              height: {
+                ideal: 240
+              },
+              aspectRatio: {ideal: 1.7777777778}
             },
-            height: {
-              ideal: 240
-            },
-            aspectRatio: { ideal: 1.7777777778 }
-          },
 
-        });
-        console.log('[LocalStream]', localStream)
-        this.$refs.localVideo.srcObject = localStream;
-        this.localStream = localStream;
+          });
+          console.log('[LocalStream]', localStream)
+          this.$refs.localVideo.srcObject = localStream;
+          this.localStream = localStream;
+        } catch (e) {
+          console.error(e)
+        }
       },
 
       async hangup() {
