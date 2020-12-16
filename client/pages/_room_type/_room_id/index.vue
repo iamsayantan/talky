@@ -21,7 +21,7 @@
       </v-col>
       <v-col v-for="room_member in room_members" :key="room_member.user_details.id" cols="6">
         {{ room_member.user_details.username }}
-        <video :id="`remote-video-${room_member.user_details.id}`" class="local-video" autoplay playsinline :ref="`remoteVideo-${room_member.user_details.id}`" ></video>
+        <video :id="`remote-video-${room_member.user_details.id}`" :ref="`remoteVideo-${room_member.user_details.id}`" class="local-video" autoplay playsinline></video>
       </v-col>
 
       <v-btn
@@ -243,23 +243,7 @@
 
         peerConnection.ontrack = event => {
           console.log('[ontrack]', event);
-          const videoElement = this.$refs[`remoteVideo-${user.id}`];
-          const astream = event.streams[0];
-
-          try {
-            videoElement.srcObject = astream;
-          } catch (err) {
-            try {
-              videoElement.src = window.webkitURL.createObjectURL(astream);
-            } catch (err) {
-              try {
-                videoElement.src = window.URL.createObjectURL(astream);
-              } catch (err) {
-                return err
-              }
-            }
-          }
-          console.log('[ontrack] Remote video for user: ' + user.username, this.$refs[`remoteVideo-${user.id}`])
+          document.getElementById(`remote-video-${user.id}`).srcObject = event.streams[0]
         };
 
         peerConnection.onicecandidate = ({candidate}) => {
