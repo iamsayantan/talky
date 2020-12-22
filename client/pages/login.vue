@@ -52,13 +52,14 @@
 
     methods: {
       async handleLogin() {
+        const returnTo = this.$route.query.return_to || '/'
         this.loading = true;
         try {
           await this.$auth.loginWith('local', {
             data: this.login
           });
 
-          await this.$router.push('/')
+          await this.$router.push(returnTo)
         } catch (e) {
           console.error(e);
         }

@@ -27,10 +27,6 @@ module.exports = {
     host: '0.0.0.0'
   },
 
-  router: {
-    middleware: ['auth']
-  },
-
   /*
   ** Customize the progress-bar color
   */
@@ -96,7 +92,7 @@ module.exports = {
       redirect: {
         login: '/login',
         logout: '/login',
-        home: '/'
+        home: false
       }
     }
   },

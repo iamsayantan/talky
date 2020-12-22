@@ -44,6 +44,11 @@
 
   export default {
     name: "index",
+    asyncData({ app, redirect, route }) {
+      if (!app.$auth.loggedIn) {
+        return redirect('/login', {return_to: route.path})
+      }
+    },
     data() {
       return {
         error: {
@@ -261,7 +266,7 @@
         };
 
         peerConnection.onnegotiationneeded = async (evt) => {
-          console.log('[onnegotiationneeded]', evt);
+          console.log('[onnegotiationneeded]', evt, user);
           if (!peerConnection.remoteDescription) {
             console.log('[onnegotiationneeded] Remote description not set. Generating offer.');
             try {

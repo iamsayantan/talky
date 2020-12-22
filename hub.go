@@ -150,17 +150,17 @@ func (h *Hub) PropagateSDPOffer(payload SDPMessage) error {
 
 	resp, _ := json.Marshal(responsePayload)
 
-	for _, member := range room.Members {
-		if client, ok := h.clients[member.ID]; ok {
-			// we exclude the the user who sent the offer.
-			if client.user.ID == payload.User.ID {
-				continue
-			}
-
-			client.sendCh <- resp
-		}
+	member, ok := room.Members[payload.TargetUserID]
+	if !ok {
+		return errors.New("member not found")
 	}
 
+	client, ok := h.clients[member.ID]
+	if !ok {
+		return errors.New("client not found.")
+	}
+
+	client.sendCh <- resp
 	return nil
 }
 
@@ -203,15 +203,17 @@ func (h *Hub) SendICE(payload ICEMessage) error {
 		Payload: payload,
 	}
 	resp, _ := json.Marshal(responsePayload)
-	for _, member := range room.Members {
-		if client, ok := h.clients[member.ID]; ok {
-			if client.user.ID == payload.User.ID {
-				continue
-			}
-
-			client.sendCh <- resp
-		}
+	member, ok := room.Members[payload.TargetUserID]
+	if !ok {
+		return errors.New("member not found")
 	}
+
+	client, ok := h.clients[member.ID]
+	if !ok {
+		return errors.New("client not found.")
+	}
+
+	client.sendCh <- resp
 
 	return nil
 }
